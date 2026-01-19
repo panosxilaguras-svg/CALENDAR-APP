@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal Calendar</title>
+
+<style>
+:root{
+  --bg:#0f0f12;
+  --card:#17171c;
+  --border:#26262c;
+  --text:#f5f5f5;
+  --muted:#a1a1aa;
+  --accent:#ffffff;
+  --star:#facc15;
+  --danger:#ef4444;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  min-height:100vh;
+  background:radial-gradient(circle at top,#1c1c22,#0f0f12);
+  font-family:system-ui,Segoe UI,sans-serif;
+  color:var(--text);
+  display:flex;
+  justify-content:center;
+}
+
+/* APP */
+.app{
+  width:100%;
+  max-width:420px;
+  padding:20px 20px 90px;
+}
+
+/* TITLES */
+h2{margin:0 0 16px}
+h3{margin:18px 0 10px;font-size:16px}
+
+/* INPUTS */
+label{
+  font-size:13px;
+  color:var(--muted);
+  display:block;
+  margin-top:12px;
+}
+input{
+  width:100%;
+  padding:11px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:#0b0b0e;
+  color:var(--text);
+  margin-top:6px;
+}
+input::-webkit-calendar-picker-indicator{
+  filter:invert(1);
+}
+
+/* IMPORTANT FIX */
+.important-wrapper{
+  margin-top:16px;
+  display:flex;
+  justify-content:center;
+}
+.important-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:#0b0b0e;
+  border:1px solid var(--border);
+  padding:10px 14px;
+  border-radius:12px;
+}
+
+/* BUTTONS */
+button{
+  border:none;
+  border-radius:14px;
+  padding:12px;
+  cursor:pointer;
+}
+.main{
+  width:100%;
+  margin-top:18px;
+  background:linear-gradient(135deg,#fff,#d4d4d8);
+  font-weight:600;
+}
+
+/* EVENTS */
+.event{
+  background:#0b0b0e;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:12px;
+  margin-top:10px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.title{font-weight:600}
+.star{color:var(--star)}
+.meta{font-size:12px;color:var(--muted)}
+.delete{
+  background:var(--danger);
+  color:#fff;
+  padding:6px 10px;
+  border-radius:8px;
+}
+.empty{
+  font-size:13px;
+  color:var(--muted);
+}
+
+/* MONTH */
+.month-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:10px;
+}
+.month-grid{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:6px;
+}
+.day{
+  aspect-ratio:1;
+  background:#0b0b0e;
+  border:1px solid var(--border);
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:13px;
+  cursor:pointer;
+}
+.day.today{border-color:#fff}
+.day.has-event{color:var(--star)}
+
+/* VIEWS */
+.view{display:none}
+.view.active{display:block}
+
+/* BOTTOM NAV */
+.nav{
+  position:fixed;
+  bottom:0;
+  left:0;
+  width:100%;
+  background:#0b0b0e;
+  border-top:1px solid var(--border);
+  display:flex;
+  justify-content:space-around;
+  padding:10px 0;
+}
+.nav button{
+  background:none;
+  color:var(--muted);
+}
+.nav button.active{
+  color:var(--accent);
+  font-weight:600;
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+  <!-- DAY -->
+  <div id="dayView" class="view active">
+    <h2>📅 Ημέρα</h2>
+
+    <label>Ημερομηνία</label>
+    <input type="date" id="date">
+
+    <label>Ώρα</label>
+    <input type="time" id="time">
+
+    <label>Description</label>
+    <input id="title" placeholder="π.χ. Γιατρός">
+
+    <div class="important-wrapper">
+      <label class="important-row">
+        <input type="checkbox" id="important">
+        <span>Σημαντικό ⭐</span>
+      </label>
+    </div>
+
+    <button class="main" onclick="addEvent()">＋ Προσθήκη Event</button>
+
+    <h3>Events Ημέρας</h3>
+    <div id="events"></div>
+  </div>
+
+  <!-- MONTH -->
+  <div id="monthView" class="view">
+    <h2>🗓 Μήνας</h2>
+    <div class="month-header">
+      <button onclick="changeMonth(-1)">‹</button>
+      <strong id="monthLabel"></strong>
+      <button onclick="changeMonth(1)">›</button>
+    </div>
+    <div class="month-grid" id="monthGrid"></div>
+  </div>
+
+  <!-- UPCOMING -->
+  <div id="upcomingView" class="view">
+    <h2>⭐ Upcoming Important</h2>
+    <div id="upcoming"></div>
+  </div>
+
+</div>
+
+<!-- NAV -->
+<div class="nav">
+  <button class="active" onclick="showView('dayView',this)">Ημέρα</button>
+  <button onclick="showView('monthView',this)">Μήνας</button>
+  <button onclick="showView('upcomingView',this)">Upcoming</button>
+</div>
+
+<script>
+const dateInput=document.getElementById("date");
+const timeInput=document.getElementById("time");
+const titleInput=document.getElementById("title");
+const importantInput=document.getElementById("important");
+const eventsDiv=document.getElementById("events");
+const upcomingDiv=document.getElementById("upcoming");
+const monthGrid=document.getElementById("monthGrid");
+const monthLabel=document.getElementById("monthLabel");
+
+dateInput.valueAsDate=new Date();
+let currentMonth=new Date();
+
+/* STORAGE */
+const getEvents=()=>JSON.parse(localStorage.getItem("events"))||[];
+const saveEvents=e=>localStorage.setItem("events",JSON.stringify(e));
+
+const sameDay=(a,b)=>a.toDateString()===b.toDateString();
+
+/* ADD EVENT — FIXED */
+function addEvent(){
+  if(!titleInput.value || !timeInput.value) return;
+
+  const events=getEvents();
+  events.push({
+    id:Date.now(),
+    date:dateInput.value,
+    time:timeInput.value,
+    title:titleInput.value,
+    important:importantInput.checked === true
+  });
+
+  saveEvents(events);
+
+  titleInput.value="";
+  timeInput.value="";
+  importantInput.checked=false;
+
+  renderAll();
+}
+
+/* DELETE */
+function del(id){
+  saveEvents(getEvents().filter(e=>e.id!==id));
+  renderAll();
+}
+
+/* DAY */
+function renderDay(){
+  const d=new Date(dateInput.value);
+  const list=getEvents().filter(e=>sameDay(new Date(e.date),d));
+
+  eventsDiv.innerHTML=list.length?"":"<div class='empty'>Δεν υπάρχουν events</div>";
+  list.forEach(e=>{
+    eventsDiv.innerHTML+=`
+      <div class="event">
+        <div>
+          <div class="title ${e.important?'star':''}">
+            ${e.important?'⭐ ':''}${e.title}
+          </div>
+          <div class="meta">${e.time}</div>
+        </div>
+        <button class="delete" onclick="del(${e.id})">X</button>
+      </div>`;
+  });
+}
+
+/* MONTH */
+function renderMonth(){
+  monthGrid.innerHTML="";
+  const y=currentMonth.getFullYear();
+  const m=currentMonth.getMonth();
+  monthLabel.textContent=currentMonth.toLocaleDateString("el-GR",{month:"long",year:"numeric"});
+  const days=new Date(y,m+1,0).getDate();
+
+  for(let i=1;i<=days;i++){
+    const d=new Date(y,m,i);
+    const has=getEvents().some(e=>sameDay(new Date(e.date),d));
+    monthGrid.innerHTML+=`
+      <div class="day ${has?'has-event':''} ${sameDay(d,new Date())?'today':''}"
+           onclick="selectDate('${d.toISOString().slice(0,10)}')">
+        ${i}
+      </div>`;
+  }
+}
+
+function changeMonth(n){
+  currentMonth.setMonth(currentMonth.getMonth()+n);
+  renderMonth();
+}
+
+function selectDate(val){
+  dateInput.value=val;
+  showView('dayView',document.querySelector('.nav button'));
+  renderDay();
+}
+
+/* UPCOMING */
+function renderUpcoming(){
+  const now=new Date();
+  const list=getEvents()
+    .filter(e=>e.important)
+    .map(e=>({...e,dt:new Date(`${e.date}T${e.time}`)}))
+    .filter(e=>e.dt>=now)
+    .sort((a,b)=>a.dt-b.dt);
+
+  upcomingDiv.innerHTML=list.length?"":"<div class='empty'>Δεν υπάρχουν upcoming</div>";
+  list.forEach(e=>{
+    upcomingDiv.innerHTML+=`
+      <div class="event">
+        <div>
+          <div class="title star">⭐ ${e.title}</div>
+          <div class="meta">${e.dt.toLocaleDateString()} • ${e.time}</div>
+        </div>
+        <button class="delete" onclick="del(${e.id})">X</button>
+      </div>`;
+  });
+}
+
+/* NAV */
+function showView(id,btn){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+/* INIT */
+function renderAll(){
+  renderDay();
+  renderMonth();
+  renderUpcoming();
+}
+dateInput.addEventListener("change",renderDay);
+renderAll();
+</script>
+
+</body>
+</html>
