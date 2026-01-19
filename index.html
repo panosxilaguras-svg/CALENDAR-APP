@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal Calendar</title>
+
+<!-- INLINE MANIFEST -->
+<link rel="manifest" href='data:application/json,{
+  "name":"Personal Calendar",
+  "short_name":"Calendar",
+  "start_url":".",
+  "display":"standalone",
+  "background_color":"#0f0f12",
+  "theme_color":"#0f0f12"
+}'>
+
+<style>
+/* ===================== THEME ===================== */
+:root{
+  --bg:#0f0f12;
+  --card:#17171c;
+  --border:#26262c;
+  --text:#f5f5f5;
+  --muted:#a1a1aa;
+  --danger:#ef4444;
+  --star:#facc15;
+  --accent:#ffffff;
+}
+
+/* ===================== RESET ===================== */
+*{box-sizing:border-box}
+body{
+  margin:0;
+  min-height:100vh;
+  background:radial-gradient(circle at top,#1c1c22,#0f0f12);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  font-family:Segoe UI,system-ui,sans-serif;
+  color:var(--text);
+}
+
+/* ===================== APP CARD ===================== */
+.app{
+  width:400px;
+  background:var(--card);
+  padding:28px;
+  border-radius:22px;
+  border:1px solid var(--border);
+  box-shadow:0 40px 100px rgba(0,0,0,.7);
+}
+
+/* ===================== TYPOGRAPHY ===================== */
+h1,h2,h3{
+  margin:0 0 18px;
+}
+h2{
+  font-size:22px;
+}
+h3{
+  font-size:16px;
+  margin-bottom:10px;
+}
+
+/* ===================== FORM ===================== */
+label{
+  font-size:13px;
+  color:var(--muted);
+  margin-top:14px;
+  display:block;
+}
+
+input{
+  width:100%;
+  background:#0b0b0e;
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:11px 12px;
+  border-radius:12px;
+  font-size:14px;
+  margin-top:6px;
+}
+
+input:focus{
+  outline:none;
+  border-color:var(--accent);
+}
+
+input::-webkit-calendar-picker-indicator{
+  filter:invert(1);
+  cursor:pointer;
+}
+
+/* ===================== CHECKBOX ===================== */
+.checkbox{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:16px;
+}
+
+/* ===================== BUTTONS ===================== */
+button{
+  cursor:pointer;
+  border:none;
+  border-radius:14px;
+  padding:12px;
+}
+
+button.main{
+  width:100%;
+  margin-top:20px;
+  background:linear-gradient(135deg,#ffffff,#d4d4d8);
+  color:#000;
+  font-weight:600;
+  font-size:15px;
+}
+
+button.delete{
+  background:var(--danger);
+  color:#fff;
+  padding:6px 12px;
+  border-radius:8px;
+  font-size:13px;
+}
+
+/* ===================== SECTIONS ===================== */
+.section{
+  margin-top:32px;
+}
+
+/* ===================== EVENTS ===================== */
+.event{
+  background:#0b0b0e;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:12px;
+  margin-top:10px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.title{
+  font-weight:600;
+  letter-spacing:.3px;
+}
+
+.important{
+  color:var(--star);
+}
+
+.meta{
+  font-size:12px;
+  color:var(--muted);
+  margin-top:4px;
+}
+
+.empty{
+  font-size:13px;
+  color:var(--muted);
+  margin-top:10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+  <h2>🗓 Personal Calendar</h2>
+
+  <label>Ημερομηνία</label>
+  <input type="date" id="date">
+
+  <label>Ώρα</label>
+  <input type="time" id="time">
+
+  <label>Description</label>
+  <input type="text" id="title" placeholder="π.χ. Γιατρός">
+
+  <div class="checkbox">
+    <input type="checkbox" id="important">
+    <span>Σημαντικό ⭐</span>
+  </div>
+
+  <button class="main" onclick="addEvent()">＋ Προσθήκη Event</button>
+
+  <div class="section">
+    <h3>📅 Events Ημέρας</h3>
+    <div id="events"></div>
+  </div>
+
+  <div class="section">
+    <h3>⭐ Upcoming Important Events</h3>
+    <div id="upcoming"></div>
+  </div>
+</div>
+
+<script>
+/* ===================== INLINE SERVICE WORKER ===================== */
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE='calendar-single-v1';
+    self.addEventListener('install',e=>{
+      e.waitUntil(
+        caches.open(CACHE).then(c=>c.addAll(['./']))
+      );
+    });
+    self.addEventListener('fetch',e=>{
+      e.respondWith(
+        caches.match(e.request).then(r=>r||fetch(e.request))
+      );
+    });
+  `;
+  const blob = new Blob([swCode], { type:'text/javascript' });
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl);
+}
+
+/* ===================== ELEMENTS ===================== */
+const dateInput=document.getElementById("date");
+const timeInput=document.getElementById("time");
+const titleInput=document.getElementById("title");
+const importantInput=document.getElementById("important");
+const eventsDiv=document.getElementById("events");
+const upcomingDiv=document.getElementById("upcoming");
+
+/* ===================== INIT ===================== */
+dateInput.valueAsDate=new Date();
+
+/* ===================== STORAGE ===================== */
+const getEvents=()=>JSON.parse(localStorage.getItem("events"))||[];
+const saveEvents=e=>localStorage.setItem("events",JSON.stringify(e));
+
+/* ===================== HELPERS ===================== */
+function sameDay(a,b){
+  return a.getFullYear()===b.getFullYear() &&
+         a.getMonth()===b.getMonth() &&
+         a.getDate()===b.getDate();
+}
+
+/* ===================== ADD EVENT ===================== */
+function addEvent(){
+  if(!titleInput.value) return;
+
+  let time=timeInput.value;
+
+  /* FIX για ελληνικό 12ωρο format */
+  if(time && (time.includes("π")||time.includes("μ"))){
+    const nums=time.match(/\d+/g);
+    if(nums){
+      const d=new Date();
+      d.setHours(nums[0],nums[1]||0);
+      time=d.toTimeString().slice(0,5);
+    }
+  }
+
+  if(!time) return;
+
+  const list=getEvents();
+  list.push({
+    id:Date.now(),
+    date:dateInput.value,
+    time:time,
+    title:titleInput.value,
+    important:importantInput.checked
+  });
+
+  saveEvents(list);
+  titleInput.value="";
+  timeInput.value="";
+  importantInput.checked=false;
+  render();
+}
+
+/* ===================== DELETE ===================== */
+function deleteEvent(id){
+  saveEvents(getEvents().filter(e=>e.id!==id));
+  render();
+}
+
+/* ===================== RENDER DAY ===================== */
+function renderDay(){
+  const d=new Date(dateInput.value);
+  const list=getEvents()
+    .filter(e=>sameDay(new Date(e.date),d))
+    .sort((a,b)=>a.time.localeCompare(b.time));
+
+  eventsDiv.innerHTML=list.length?"":"<div class='empty'>Δεν υπάρχουν events</div>";
+
+  list.forEach(e=>{
+    eventsDiv.innerHTML+=`
+      <div class="event">
+        <div>
+          <div class="title ${e.important?"important":""}">
+            ${e.important?"⭐ ":""}${e.title}
+          </div>
+          <div class="meta">${e.time}</div>
+        </div>
+        <button class="delete" onclick="deleteEvent(${e.id})">X</button>
+      </div>`;
+  });
+}
+
+/* ===================== RENDER UPCOMING ===================== */
+function renderUpcoming(){
+  const now=new Date();
+  const list=getEvents()
+    .filter(e=>e.important)
+    .map(e=>({...e,dt:new Date(`${e.date}T${e.time}`)}))
+    .filter(e=>e.dt>=now)
+    .sort((a,b)=>a.dt-b.dt);
+
+  upcomingDiv.innerHTML=list.length?"":"<div class='empty'>Δεν υπάρχουν upcoming</div>";
+
+  list.forEach(e=>{
+    upcomingDiv.innerHTML+=`
+      <div class="event">
+        <div>
+          <div class="title important">⭐ ${e.title}</div>
+          <div class="meta">${e.dt.toLocaleDateString()} • ${e.time}</div>
+        </div>
+        <button class="delete" onclick="deleteEvent(${e.id})">X</button>
+      </div>`;
+  });
+}
+
+/* ===================== RENDER ===================== */
+function render(){
+  renderDay();
+  renderUpcoming();
+}
+
+dateInput.addEventListener("change",render);
+render();
+</script>
+
+</body>
+</html>
