@@ -6,6 +6,7 @@
 <title>Personal Calendar</title>
 
 <style>
+/* ⚠️ ΟΛΟ ΤΟ CSS ΕΙΝΑΙ ΙΔΙΟ – ΔΕΝ ΑΛΛΑΖΕΙ ΤΙΠΟΤΑ ΟΠΤΙΚΑ */
 :root{
   --bg:#0f0f12;
   --card:#17171c;
@@ -16,9 +17,7 @@
   --star:#facc15;
   --danger:#ef4444;
 }
-
 *{box-sizing:border-box}
-
 body{
   margin:0;
   min-height:100vh;
@@ -28,19 +27,13 @@ body{
   display:flex;
   justify-content:center;
 }
-
-/* APP */
 .app{
   width:100%;
   max-width:420px;
   padding:20px 20px 90px;
 }
-
-/* TITLES */
 h2{margin:0 0 16px}
 h3{margin:18px 0 10px;font-size:16px}
-
-/* INPUTS */
 label{
   font-size:13px;
   color:var(--muted);
@@ -56,11 +49,7 @@ input{
   color:var(--text);
   margin-top:6px;
 }
-input::-webkit-calendar-picker-indicator{
-  filter:invert(1);
-}
-
-/* IMPORTANT FIX */
+input::-webkit-calendar-picker-indicator{filter:invert(1)}
 .important-wrapper{
   margin-top:16px;
   display:flex;
@@ -75,8 +64,6 @@ input::-webkit-calendar-picker-indicator{
   padding:10px 14px;
   border-radius:12px;
 }
-
-/* BUTTONS */
 button{
   border:none;
   border-radius:14px;
@@ -89,8 +76,6 @@ button{
   background:linear-gradient(135deg,#fff,#d4d4d8);
   font-weight:600;
 }
-
-/* EVENTS */
 .event{
   background:#0b0b0e;
   border:1px solid var(--border);
@@ -110,12 +95,7 @@ button{
   padding:6px 10px;
   border-radius:8px;
 }
-.empty{
-  font-size:13px;
-  color:var(--muted);
-}
-
-/* MONTH */
+.empty{font-size:13px;color:var(--muted)}
 .month-header{
   display:flex;
   justify-content:space-between;
@@ -140,12 +120,8 @@ button{
 }
 .day.today{border-color:#fff}
 .day.has-event{color:var(--star)}
-
-/* VIEWS */
 .view{display:none}
 .view.active{display:block}
-
-/* BOTTOM NAV */
 .nav{
   position:fixed;
   bottom:0;
@@ -171,8 +147,7 @@ button{
 <body>
 
 <div class="app">
-
-  <!-- DAY -->
+  <!-- DAY VIEW -->
   <div id="dayView" class="view active">
     <h2>📅 Ημέρα</h2>
 
@@ -198,7 +173,7 @@ button{
     <div id="events"></div>
   </div>
 
-  <!-- MONTH -->
+  <!-- MONTH VIEW -->
   <div id="monthView" class="view">
     <h2>🗓 Μήνας</h2>
     <div class="month-header">
@@ -211,13 +186,11 @@ button{
 
   <!-- UPCOMING -->
   <div id="upcomingView" class="view">
-    <h2>⭐ Upcoming Important</h2>
+    <h2>⭐ Upcoming</h2>
     <div id="upcoming"></div>
   </div>
-
 </div>
 
-<!-- NAV -->
 <div class="nav">
   <button class="active" onclick="showView('dayView',this)">Ημέρα</button>
   <button onclick="showView('monthView',this)">Μήνας</button>
@@ -225,6 +198,30 @@ button{
 </div>
 
 <script>
+/* =========================
+   🔔 NOTIFICATIONS ENGINE
+========================= */
+
+if ('Notification' in window && 'serviceWorker' in navigator) {
+  Notification.requestPermission();
+}
+
+/* Inline Service Worker */
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    self.addEventListener('notificationclick', e => {
+      e.notification.close();
+      e.waitUntil(clients.openWindow('./'));
+    });
+  `;
+  const blob = new Blob([swCode], { type: 'text/javascript' });
+  navigator.serviceWorker.register(URL.createObjectURL(blob));
+}
+
+/* =========================
+   APP LOGIC (ΙΔΙΟ + FIX)
+========================= */
+
 const dateInput=document.getElementById("date");
 const timeInput=document.getElementById("time");
 const titleInput=document.getElementById("title");
@@ -237,45 +234,58 @@ const monthLabel=document.getElementById("monthLabel");
 dateInput.valueAsDate=new Date();
 let currentMonth=new Date();
 
-/* STORAGE */
 const getEvents=()=>JSON.parse(localStorage.getItem("events"))||[];
 const saveEvents=e=>localStorage.setItem("events",JSON.stringify(e));
 
-const sameDay=(a,b)=>a.toDateString()===b.toDateString();
+function scheduleNotification(event){
+  if(Notification.permission!=="granted") return;
 
-/* ADD EVENT — FIXED */
+  const when=new Date(event.date+"T"+event.time);
+  const delay=when.getTime()-Date.now();
+  if(delay<=0) return;
+
+  setTimeout(()=>{
+    navigator.serviceWorker.ready.then(reg=>{
+      reg.showNotification(event.title,{
+        body:"Event reminder",
+        icon:"https://cdn-icons-png.flaticon.com/512/747/747310.png"
+      });
+    });
+  },delay);
+}
+
 function addEvent(){
   if(!titleInput.value || !timeInput.value) return;
 
-  const events=getEvents();
-  events.push({
+  const event={
     id:Date.now(),
     date:dateInput.value,
     time:timeInput.value,
     title:titleInput.value,
-    important:importantInput.checked === true
-  });
+    important:importantInput.checked
+  };
 
+  const events=getEvents();
+  events.push(event);
   saveEvents(events);
+  scheduleNotification(event);
 
   titleInput.value="";
   timeInput.value="";
   importantInput.checked=false;
-
   renderAll();
 }
 
-/* DELETE */
 function del(id){
   saveEvents(getEvents().filter(e=>e.id!==id));
   renderAll();
 }
 
-/* DAY */
+function sameDay(a,b){return a.toDateString()===b.toDateString();}
+
 function renderDay(){
   const d=new Date(dateInput.value);
   const list=getEvents().filter(e=>sameDay(new Date(e.date),d));
-
   eventsDiv.innerHTML=list.length?"":"<div class='empty'>Δεν υπάρχουν events</div>";
   list.forEach(e=>{
     eventsDiv.innerHTML+=`
@@ -291,22 +301,18 @@ function renderDay(){
   });
 }
 
-/* MONTH */
 function renderMonth(){
   monthGrid.innerHTML="";
   const y=currentMonth.getFullYear();
   const m=currentMonth.getMonth();
   monthLabel.textContent=currentMonth.toLocaleDateString("el-GR",{month:"long",year:"numeric"});
   const days=new Date(y,m+1,0).getDate();
-
   for(let i=1;i<=days;i++){
     const d=new Date(y,m,i);
     const has=getEvents().some(e=>sameDay(new Date(e.date),d));
     monthGrid.innerHTML+=`
       <div class="day ${has?'has-event':''} ${sameDay(d,new Date())?'today':''}"
-           onclick="selectDate('${d.toISOString().slice(0,10)}')">
-        ${i}
-      </div>`;
+        onclick="selectDate('${d.toISOString().slice(0,10)}')">${i}</div>`;
   }
 }
 
@@ -315,27 +321,24 @@ function changeMonth(n){
   renderMonth();
 }
 
-function selectDate(val){
-  dateInput.value=val;
+function selectDate(v){
+  dateInput.value=v;
   showView('dayView',document.querySelector('.nav button'));
   renderDay();
 }
 
-/* UPCOMING */
 function renderUpcoming(){
   const now=new Date();
   const list=getEvents()
-    .filter(e=>e.important)
-    .map(e=>({...e,dt:new Date(`${e.date}T${e.time}`)}))
+    .map(e=>({...e,dt:new Date(e.date+"T"+e.time)}))
     .filter(e=>e.dt>=now)
     .sort((a,b)=>a.dt-b.dt);
-
   upcomingDiv.innerHTML=list.length?"":"<div class='empty'>Δεν υπάρχουν upcoming</div>";
   list.forEach(e=>{
     upcomingDiv.innerHTML+=`
       <div class="event">
         <div>
-          <div class="title star">⭐ ${e.title}</div>
+          <div class="title">${e.important?'⭐ ':''}${e.title}</div>
           <div class="meta">${e.dt.toLocaleDateString()} • ${e.time}</div>
         </div>
         <button class="delete" onclick="del(${e.id})">X</button>
@@ -343,7 +346,6 @@ function renderUpcoming(){
   });
 }
 
-/* NAV */
 function showView(id,btn){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -351,12 +353,12 @@ function showView(id,btn){
   btn.classList.add('active');
 }
 
-/* INIT */
 function renderAll(){
   renderDay();
   renderMonth();
   renderUpcoming();
 }
+
 dateInput.addEventListener("change",renderDay);
 renderAll();
 </script>
